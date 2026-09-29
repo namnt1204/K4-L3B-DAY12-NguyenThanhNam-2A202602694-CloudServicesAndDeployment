@@ -9,6 +9,7 @@ nằm ở nơi mọi instance cùng nhìn thấy: Redis.
 from __future__ import annotations
 
 import json
+import os
 
 import redis
 
@@ -25,7 +26,24 @@ def get_redis_client(url: str | None = None):
     Docker. Tiện cho lúc học, nhưng KHÔNG dùng khi deploy: nó vẫn là state
     trong process, đúng cái mà CP4 đang tìm cách loại bỏ.
     """
-    url = url or get_settings().redis_url
+    if not url:
+        url = (
+            os.getenv("REDIS_URL")
+            or os.getenv("REDIS_PRIVATE_URL")
+            or os.getenv("REDIS_PUBLIC_URL")
+        )
+        if not url and os.getenv("REDISHOST"):
+            user = os.getenv("REDISUSER", "default")
+            pw = os.getenv("REDISPASSWORD", "")
+            host = os.getenv("REDISHOST")
+            port = os.getenv("REDISPORT", "6379")
+            auth = f"{user}:{pw}@" if pw else ""
+            url = f"redis://{auth}{host}:{port}/0"
+    if not url:
+        try:
+            url = get_settings().redis_url
+        except Exception:
+            url = "redis://localhost:6379/0"
     if url.startswith("fake://"):
         import fakeredis
 

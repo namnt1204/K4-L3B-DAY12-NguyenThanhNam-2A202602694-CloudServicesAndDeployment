@@ -30,6 +30,8 @@ from .logging_utils import log_event
 from .rate_limiter import RateLimiter
 from .store import ConversationStore, get_redis_client
 
+import os
+
 SERVICE_NAME = "day12-agent"
 SERVICE_VERSION = "1.0.0"
 
@@ -41,17 +43,32 @@ SERVICE_VERSION = "1.0.0"
 # ─────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def get_store() -> ConversationStore:
-    return ConversationStore(get_redis_client())
+    try:
+        client = get_redis_client()
+    except Exception:
+        import redis
+        client = redis.from_url("redis://localhost:6379/0", decode_responses=True)
+    return ConversationStore(client)
 
 
 @lru_cache(maxsize=1)
 def get_rate_limiter() -> RateLimiter:
-    return RateLimiter(get_redis_client(), get_settings().rate_limit_per_minute)
+    limit = 10
+    try:
+        limit = get_settings().rate_limit_per_minute
+    except Exception:
+        limit = int(os.getenv("RATE_LIMIT_PER_MINUTE", 10))
+    return RateLimiter(get_redis_client(), limit)
 
 
 @lru_cache(maxsize=1)
 def get_cost_guard() -> CostGuard:
-    return CostGuard(get_redis_client(), get_settings().monthly_budget_usd)
+    budget = 10.0
+    try:
+        budget = get_settings().monthly_budget_usd
+    except Exception:
+        budget = float(os.getenv("MONTHLY_BUDGET_USD", 10.0))
+    return CostGuard(get_redis_client(), budget)
 
 
 @asynccontextmanager
@@ -77,14 +94,23 @@ class AskRequest(BaseModel):
 def health():
     if lifecycle.shutting_down:
         return JSONResponse(status_code=503, content={"status": "shutting_down"})
-    return {"status": "ok", "service": SERVICE_NAME, "version": SERVICE_VERSION}
+    diag = {
+        "has_agent_api_key": bool(os.getenv("AGENT_API_KEY")),
+        "has_redis_url": bool(os.getenv("REDIS_URL") or os.getenv("REDIS_PRIVATE_URL")),
+        "env_keys": [k for k in sorted(os.environ.keys()) if not any(x in k.lower() for x in ["key", "secret", "token", "pass"])],
+    }
+    return {"status": "ok", "service": SERVICE_NAME, "version": SERVICE_VERSION, "diag": diag}
 
 
 @app.get("/ready")
 def ready(store: ConversationStore = Depends(get_store)):
     if lifecycle.shutting_down:
         return JSONResponse(status_code=503, content={"status": "shutting_down"})
-    if not store.ping():
+    try:
+        is_ready = store.ping()
+    except Exception:
+        is_ready = False
+    if not is_ready:
         return JSONResponse(status_code=503, content={"status": "not ready", "redis": False})
     return {"status": "ready", "redis": True}
 

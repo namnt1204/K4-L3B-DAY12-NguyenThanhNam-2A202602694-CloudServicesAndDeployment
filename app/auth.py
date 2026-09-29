@@ -6,6 +6,7 @@ người lạ quyết định.
 
 from __future__ import annotations
 
+import os
 import secrets
 
 from fastapi import Header, HTTPException, status
@@ -19,8 +20,16 @@ def verify_api_key(
     x_api_key: str | None = Header(default=None),
     x_user_id: str | None = Header(default=None),
 ) -> str:
-    expected_key = get_settings().agent_api_key
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid or missing API key",
+        )
+    try:
+        expected_key = get_settings().agent_api_key
+    except Exception:
+        expected_key = os.getenv("AGENT_API_KEY", "")
+    if not expected_key or not secrets.compare_digest(x_api_key, expected_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid or missing API key",
