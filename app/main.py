@@ -94,9 +94,12 @@ class AskRequest(BaseModel):
 def health():
     if lifecycle.shutting_down:
         return JSONResponse(status_code=503, content={"status": "shutting_down"})
+    redis_val = os.getenv("REDIS_URL", "")
     diag = {
         "has_agent_api_key": bool(os.getenv("AGENT_API_KEY")),
-        "has_redis_url": bool(os.getenv("REDIS_URL") or os.getenv("REDIS_PRIVATE_URL")),
+        "has_redis_url": bool(redis_val),
+        "redis_val_len": len(redis_val),
+        "redis_val_prefix": redis_val[:12] if redis_val else "",
         "env_keys": [k for k in sorted(os.environ.keys()) if not any(x in k.lower() for x in ["key", "secret", "token", "pass"])],
     }
     return {"status": "ok", "service": SERVICE_NAME, "version": SERVICE_VERSION, "diag": diag}
