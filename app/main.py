@@ -96,6 +96,7 @@ def health():
         return JSONResponse(status_code=503, content={"status": "shutting_down"})
     redis_val = os.getenv("REDIS_URL", "")
     diag = {
+        "service_id": os.getenv("RAILWAY_SERVICE_ID", ""),
         "has_agent_api_key": bool(os.getenv("AGENT_API_KEY")),
         "has_redis_url": bool(redis_val),
         "redis_val_len": len(redis_val),
